@@ -1,1 +1,76 @@
-html{background:#f4f0e8}body{margin:0}*{box-sizing:border-box}
+/* ===== 时光之遗 · 全局基础与设计令牌 ===== */
+:root {
+  /* 纸色系（三级明度） */
+  --paper-0: #f4f0e8;   /* 页面底 */
+  --paper-1: #faf7f1;   /* 卡片面 */
+  --paper-2: #fffdf9;   /* 提亮面 */
+
+  /* 墨色系 */
+  --ink-1: #2a2926;     /* 主文字 */
+  --ink-2: #5f594f;     /* 次文字 */
+  --ink-3: #8d8477;     /* 弱文字 */
+
+  /* 强调色 */
+  --accent: #9c4e3a;    /* 赭红 · 时光印记 */
+  --accent-soft: #b56a55;
+  --claude: #537a70;    /* 苔绿 · Claude */
+  --claude-deep: #3e5f57;
+
+  /* 线与影 */
+  --line: #ddd5c7;
+  --line-soft: #e8e1d4;
+  --shadow-card: 0 1px 2px rgba(64, 58, 48, .05), 0 4px 14px rgba(64, 58, 48, .06);
+  --shadow-float: 0 6px 24px rgba(48, 42, 34, .14);
+
+  /* 层级（依规格：内容10 导航20 浮动30 Overlay80 Toast120） */
+  --z-decor: 1;
+  --z-content: 10;
+  --z-nav: 20;
+  --z-float: 30;
+  --z-toast: 120;
+
+  /* 字体 */
+  --serif: Georgia, 'Times New Roman', 'Source Han Serif SC', 'Noto Serif SC', 'Songti SC', 'SimSun', serif;
+  --mono: ui-monospace, 'Cascadia Code', 'Source Code Pro', Consolas, monospace;
+
+  /* 动效 */
+  --ease: cubic-bezier(.22, .61, .36, 1);
+  --dur: .18s;
+}
+
+html { background: var(--paper-0); }
+body { margin: 0; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+* { box-sizing: border-box; }
+
+::selection { background: rgba(156, 78, 58, .16); }
+
+/* 档案馆纸纹（极淡，纯装饰） */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-decor);
+  pointer-events: none;
+  opacity: .35;
+  background-image: radial-gradient(rgba(120, 105, 82, .05) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* 细滚动条 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: #cfc5b4;
+  border-radius: 6px;
+  border: 2.5px solid var(--paper-0);
+}
+::-webkit-scrollbar-thumb:hover { background: #b9ad99; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* 动效尊重 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
