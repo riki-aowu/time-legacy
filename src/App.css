@@ -687,6 +687,24 @@ nav .active {
   border-radius: 50%; animation: spin 1s linear infinite;
 }
 
+/* Step 1 repair: searchable full raw data and bounded reading windows */
+.role { border: 0; background: transparent; text-align: left; cursor: pointer; }
+.message-hit { box-shadow: 0 0 0 2px rgba(156, 78, 58, .62), var(--shadow-card); animation: hit-pulse 1.8s var(--ease); }
+@keyframes hit-pulse { from { background: rgba(235, 204, 103, .34); } to { background: inherit; } }
+.window-gap { display: flex; justify-content: center; padding: 20px 0; }
+.window-gap button, .raw-load, .raw-tools button { font: 12px var(--mono); color: var(--claude-deep); border: 1px solid var(--line); background: var(--paper-1); border-radius: 7px; padding: 7px 10px; cursor: pointer; }
+.window-gap button:hover, .raw-load:hover, .raw-tools button:hover { border-color: var(--accent); color: var(--accent); }
+.search-result em { display: block; margin-top: 6px; color: var(--ink-3); font: 11px/1.5 var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.raw-viewer { margin-top: 8px; }
+.raw-load { width: 100%; text-align: left; }
+.raw-tools { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; flex-wrap: wrap; }
+.raw-tools input { flex: 1; min-width: 160px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--paper-0); color: var(--ink-1); font: 12px var(--mono); }
+.raw-tools span { color: var(--ink-3); font: 11px var(--mono); }
+.raw-full { max-height: 560px !important; overflow: auto; border: 1px solid var(--line-soft); border-radius: 7px; }
+.large-content { border: 1px dashed var(--line); border-radius: 9px; padding: 13px; color: var(--ink-2); }
+.large-content p { margin-top: 0; }
+.design-meta { max-width: 720px; margin: 0 auto; color: var(--ink-2); }
+
 /* --- 移动端补充 --- */
 @media (max-width: 700px) {
   .index-head { position: static; }
