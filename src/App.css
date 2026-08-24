@@ -580,3 +580,116 @@ nav .active {
   .messages { padding: 24px 5% 60px; }
   .message-content { font-size: 15.5px; }
 }
+
+/* ===== Phase 3 · 档案阅读页扩展（Step 1 视觉样板） ===== */
+
+/* --- 左侧索引柜：搜索 + 排序 + 筛选 --- */
+.archive aside { display: flex; flex-direction: column; padding: 0; }
+.index-head { padding: 16px 14px 12px; border-bottom: 1px solid var(--line-soft); position: sticky; top: 0; background: color-mix(in srgb, var(--paper-0) 92%, var(--paper-1)); z-index: var(--z-content); }
+.index-head input { margin-bottom: 10px; }
+.sort-row { display: flex; align-items: center; gap: 8px; }
+.sort-row select {
+  flex: 0 0 auto; max-width: 130px;
+  font: 12px var(--mono); color: var(--ink-2);
+  background: var(--paper-2); border: 1px solid #cfc6b8; border-radius: 7px;
+  padding: 5px 6px; cursor: pointer;
+}
+.sort-row .count { font: 11px var(--mono); color: var(--ink-3); margin-left: auto; letter-spacing: .03em; }
+.filter-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+.chip {
+  font-size: 11.5px; letter-spacing: .04em;
+  padding: 4px 9px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent; color: var(--ink-2);
+  transition: all var(--dur) var(--ease);
+}
+.chip:hover { border-color: var(--accent-soft); color: var(--accent); }
+.chip.on { background: rgba(156, 78, 58, .1); border-color: var(--accent); color: var(--accent); }
+.index-list { overflow: auto; flex: 1; padding: 6px 10px 24px; }
+.index-empty { text-align: center; color: var(--ink-3); font-size: 13px; padding: 30px 10px; }
+.conversation .meta { display: flex; align-items: center; gap: 7px; margin-top: 2px; }
+.conversation .kind-tag {
+  font: 9px var(--mono); font-style: normal; letter-spacing: .1em;
+  color: var(--claude-deep); background: rgba(83, 122, 112, .12);
+  padding: 1.5px 6px; border-radius: 4px; white-space: nowrap;
+}
+.conversation .proj-tag {
+  display: block; font-size: 11px; font-style: normal; color: var(--ink-3); margin-top: 5px;
+}
+
+/* --- 消息块卡片：Thinking / Tool / 其他 --- */
+.block-card { border: 1px solid var(--line-soft); border-radius: 10px; margin: 12px 0; background: var(--paper-1); overflow: hidden; }
+.block-card summary {
+  display: flex; align-items: center; gap: 9px;
+  padding: 9px 14px; cursor: pointer; user-select: none; list-style: none;
+  font: 12px var(--mono); color: var(--ink-2); letter-spacing: .06em;
+  transition: background var(--dur);
+}
+.block-card summary::-webkit-details-marker { display: none; }
+.block-card summary:hover { background: rgba(156, 78, 58, .04); }
+.block-card .chev { margin-left: auto; transition: transform var(--dur) var(--ease); color: var(--ink-3); }
+.block-card[open] > summary .chev { transform: rotate(90deg); }
+.block-card .glyph { font-style: normal; font-size: 13px; line-height: 1; opacity: .8; }
+.block-card.thinking { border-left: 3px solid #8a7bb0; background: linear-gradient(180deg, rgba(138, 123, 176, .06), var(--paper-1)); }
+.block-card.thinking .glyph { color: #8a7bb0; }
+.block-card.tool { border-left: 3px solid #a08a4e; background: linear-gradient(180deg, rgba(160, 138, 78, .05), var(--paper-1)); }
+.block-card.tool .glyph { color: #a08a4e; }
+.block-card.other { border-left: 3px solid var(--ink-3); }
+.block-card .mcp { font-style: normal; font-size: 10.5px; color: var(--claude-deep); background: rgba(83,122,112,.1); padding: 1.5px 7px; border-radius: 4px; margin-left: 4px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.block-card .kv { font: 11px var(--mono); color: var(--ink-3); letter-spacing: .14em; margin: 0 0 6px; }
+.block-body { padding: 4px 14px 12px; }
+.raw-pre {
+  background: transparent; box-shadow: none; padding: 8px 4px 4px; margin: 0;
+  font: 12px/1.6 var(--mono); color: var(--ink-2); white-space: pre-wrap; word-break: break-word;
+}
+.block-card[open] .raw-pre { max-height: 420px; overflow: auto; }
+.md :is(p, li) { line-height: 1.85; }
+.code-block { position: relative; }
+.attach-list, .file-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.file-list { flex-direction: row; flex-wrap: wrap; }
+
+/* --- 附件卡片 / 文件徽章 --- */
+.attach-card {
+  display: flex; gap: 12px; align-items: flex-start;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: repeating-linear-gradient(45deg, transparent 0 9px, rgba(156,78,58,.015) 9px 18px), var(--paper-1);
+  padding: 13px 15px;
+}
+.attach-card .glyph { font-style: normal; font-size: 17px; color: var(--accent-soft); line-height: 1.2; }
+.attach-card b { display: block; font-size: 14px; font-weight: 600; word-break: break-all; }
+.attach-card span { display: block; font: 11px var(--mono); color: var(--ink-3); margin-top: 3px; letter-spacing: .03em; }
+.attach-card .attach-note { font-size: 11px; color: var(--ink-3); margin: 8px 0 0; opacity: .8; }
+.inline-details { margin-top: 8px; }
+.inline-details summary { cursor: pointer; font: 11.5px var(--mono); color: var(--claude-deep); user-select: none; }
+.inline-details .raw-pre { padding-top: 6px; }
+.file-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--paper-1); padding: 5px 11px;
+  font-size: 12.5px; color: var(--ink-2); word-break: break-all;
+}
+.file-chip .glyph { font-style: normal; color: var(--ink-3); }
+
+/* --- 加载态 --- */
+.empty.loading { color: var(--accent); }
+.empty.loading::before {
+  content: ''; display: block; width: 22px; height: 22px; margin: 0 auto 14px;
+  border: 2px solid rgba(156,78,58,.2); border-top-color: var(--accent);
+  border-radius: 50%; animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.load-more {
+  text-align: center; padding: 26px 0 8px; color: var(--ink-3);
+  font: 12px var(--mono); letter-spacing: .06em;
+}
+.load-more::before {
+  content: ''; display: block; width: 18px; height: 18px; margin: 0 auto 10px;
+  border: 2px solid var(--line); border-top-color: var(--ink-3);
+  border-radius: 50%; animation: spin 1s linear infinite;
+}
+
+/* --- 移动端补充 --- */
+@media (max-width: 700px) {
+  .index-head { position: static; }
+  .filter-row { gap: 4px; }
+  .chip { font-size: 11px; padding: 3px 8px; }
+}
