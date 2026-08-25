@@ -1,32 +1,997 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent, DragEvent } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { conversationText } from './export'
-import { serializeRawJson } from './raw'
-import { AnalyticsPage, DataPage, ExportPage, MemoriesPage, ProjectsPage, ReflectionsPage } from './pages'
-import { exportArchiveSet } from './export-set'
-import { importClaudeFiles } from './data/import-client'
-import { clearAllData, legacyArchiveSnapshot } from './data/db'
-import { getConversationDetail, getDesignChatDetail, listArchive, searchArchive } from './data/queries'
-import type { ArchiveFilter, ArchiveIndexItem, ArchiveSort, ConversationDetail, DesignChatDetail, SearchResult } from './data/queries'
-import './App.css'
-import './pages.css'
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent, DragEvent } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { conversationText } from "./export";
+import { serializeRawJson } from "./raw";
+import {
+  AnalyticsPage,
+  DataPage,
+  ExportPage,
+  MemoriesPage,
+  ProjectsPage,
+  ReflectionsPage,
+} from "./pages";
+import { exportArchiveSet } from "./export-set";
+import { importClaudeFiles } from "./data/import-client";
+import { clearAllData, legacyArchiveSnapshot } from "./data/db";
+import {
+  getConversationDetail,
+  getDesignChatDetail,
+  listArchive,
+  searchArchive,
+} from "./data/queries";
+import type {
+  ArchiveFilter,
+  ArchiveIndexItem,
+  ArchiveSort,
+  ConversationDetail,
+  DesignChatDetail,
+  SearchResult,
+} from "./data/queries";
+import "./App.css";
+import "./pages.css";
 
-type Block={type:string;text?:string;payload?:unknown}; type Message={id:string;role:string;createdAt?:string;blocks:Block[]}; type Conversation={id:string;title:string;createdAt?:string;updatedAt?:string;messages:Message[]}; type Archive={version:1;importedAt:string;warnings:string[];conversations:Conversation[]}; type Row=Record<string,unknown>; type Selection={kind:'conversation'|'design_chat';id:string}; type Anchor={uuid:string;offset:number}; type Target={uuid:string;token:number}
-const str=(v:unknown)=>typeof v==='string'?v:''; const textOf=(m:Message)=>m.blocks.map(b=>b.text??'').join('\n'); const date=(v?:string)=>v?new Intl.DateTimeFormat('zh-CN',{dateStyle:'medium',timeStyle:'short'}).format(new Date(v)):'时间未知'; const bytes=(n:number)=>n>=1048576?`${(n/1048576).toFixed(1)} MB`:n>=1024?`${(n/1024).toFixed(1)} KB`:`${n} B`; const roleLabel=(r:string)=>({user:'你',human:'你',assistant:'Claude',system:'System'}[r]??r); const blockLabel=(t:string)=>({thinking:'Thinking',tool_use:'Tool Call',tool_result:'Tool Result',token_budget:'Token Budget',flag:'Flag'}[t]??(t.startsWith('unknown:')?`未识别 · ${t.slice(8)}`:t)); const download=(n:string,d:string,t:string)=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([d],{type:t}));a.download=n;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),0)}
-async function archiveDb(a:'get'|'clear'):Promise<Archive|undefined>{if(a==='get')return legacyArchiveSnapshot();await clearAllData();return undefined}
+type Block = { type: string; text?: string; payload?: unknown };
+type Message = {
+  id: string;
+  role: string;
+  createdAt?: string;
+  blocks: Block[];
+};
+type Conversation = {
+  id: string;
+  title: string;
+  createdAt?: string;
+  updatedAt?: string;
+  messages: Message[];
+};
+type Archive = {
+  version: 1;
+  importedAt: string;
+  warnings: string[];
+  conversations: Conversation[];
+};
+type Row = Record<string, unknown>;
+type Selection = { kind: "conversation" | "design_chat"; id: string };
+type Anchor = { uuid: string; offset: number };
+type Target = { uuid: string; token: number };
+const str = (v: unknown) => (typeof v === "string" ? v : "");
+const textOf = (m: Message) => m.blocks.map((b) => b.text ?? "").join("\n");
+const date = (v?: string) =>
+  v
+    ? new Intl.DateTimeFormat("zh-CN", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(new Date(v))
+    : "时间未知";
+const bytes = (n: number) =>
+  n >= 1048576
+    ? `${(n / 1048576).toFixed(1)} MB`
+    : n >= 1024
+      ? `${(n / 1024).toFixed(1)} KB`
+      : `${n} B`;
+const roleLabel = (r: string) =>
+  ({ user: "你", human: "你", assistant: "Claude", system: "System" })[r] ?? r;
+const blockLabel = (t: string) =>
+  ({
+    thinking: "Thinking",
+    tool_use: "Tool Call",
+    tool_result: "Tool Result",
+    token_budget: "Token Budget",
+    flag: "Flag",
+  })[t] ?? (t.startsWith("unknown:") ? `未识别 · ${t.slice(8)}` : t);
+const download = (n: string, d: string, t: string) => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([d], { type: t }));
+  a.download = n;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 0);
+};
+async function archiveDb(a: "get" | "clear"): Promise<Archive | undefined> {
+  if (a === "get") return legacyArchiveSnapshot();
+  await clearAllData();
+  return undefined;
+}
 
-function RawViewer({value,label='Raw JSON'}:{value:unknown;label?:string}){const full=useMemo(()=>serializeRawJson(value),[value]),[open,setOpen]=useState(false),[needle,setNeedle]=useState(''),[copied,setCopied]=useState(false);const size=new Blob([full]).size,hits=needle?full.toLowerCase().split(needle.toLowerCase()).length-1:0,rendered=!needle?full:full.split(new RegExp(`(${needle.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`,'gi')).map((part,index)=>part.toLowerCase()===needle.toLowerCase()?<mark key={index}>{part}</mark>:part);const copy=async()=>{await navigator.clipboard?.writeText(full);setCopied(true);window.setTimeout(()=>setCopied(false),1500)};return <div className="raw-viewer">{!open?<button className="raw-load" onClick={()=>setOpen(true)}>{label}{size>20000?` 较大 · ${bytes(size)}`:''} · 点击完整加载</button>:<><div className="raw-tools"><input value={needle} onChange={e=>setNeedle(e.target.value)} placeholder="在当前 JSON 中搜索" aria-label="在当前 JSON 中搜索"/>{needle&&<span>{hits} 处</span>}<button onClick={()=>void copy()}>{copied?'已复制':'Copy'}</button><button onClick={()=>setOpen(false)}>Collapse</button></div><pre className="raw-pre raw-full">{rendered}</pre></>}</div>}
-function DeferredMarkdown({text,code=false}:{text:string;code?:boolean}){const[loaded,setLoaded]=useState(text.length<=120000);if(!loaded)return <div className="large-content"><p>此内容较大（{bytes(new Blob([text]).size)}），为避免阅读页卡顿尚未渲染。</p><button className="secondary" onClick={()=>setLoaded(true)}>展开完整内容</button></div>;return code?<pre className="code-block"><code>{text}</code></pre>:<div className="md"><ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown></div>}
-function BlockView({block}:{block:Row}){const type=str(block.type),content=str(block.normalizedContent),raw=block.raw;if(type==='text'&&content)return <DeferredMarkdown text={content}/>;if(type==='code'&&content)return <DeferredMarkdown text={content} code/>;if(type==='thinking')return <details className="block-card thinking"><summary><i className="glyph">◍</i>Thinking<span className="chev">▸</span></summary><div className="block-body">{content?<DeferredMarkdown text={content} code/>:<RawViewer value={raw} label="Thinking Raw JSON"/>}</div></details>;if(type==='tool_use'){const d=raw as Row|undefined;return <details className="block-card tool"><summary><i className="glyph">⚙</i>Tool Call · {str(d?.name)||'未知工具'}{str(d?.mcp_server_url)&&<em className="mcp">MCP · {str(d?.mcp_server_url)}</em>}<span className="chev">▸</span></summary><div className="block-body"><p className="kv">Input</p><RawViewer value={d?.input??raw} label="Tool Input JSON"/></div></details>}if(type==='tool_result')return <details className="block-card tool"><summary><i className="glyph">◎</i>Tool Result<span className="chev">▸</span></summary><div className="block-body">{content?<DeferredMarkdown text={content} code/>:<RawViewer value={raw} label="Tool Result JSON"/>}</div></details>;return <details className="block-card other"><summary><i className="glyph">▣</i>{blockLabel(type)}<span className="chev">▸</span></summary><div className="block-body">{content?<DeferredMarkdown text={content} code/>:<RawViewer value={raw} label="Raw JSON"/>}</div></details>}
-function AttachmentCard({a}:{a:Row}){const name=str(a.fileName)||'未命名文件',size=Number(a.fileSize??0);return <div className="attach-card"><i className="glyph">▤</i><div><b>{name}</b><span>{[str(a.fileType)||'未知类型',size?bytes(size):''].filter(Boolean).join(' · ')}</span>{str(a.extractedContent)&&<details className="inline-details"><summary>查看提取内容</summary><DeferredMarkdown text={str(a.extractedContent)} code/></details>}<p className="attach-note">原始文件未包含在 Claude 导出中</p></div></div>}; function FileChip({f}:{f:Row}){return <div className="file-chip"><i className="glyph">▦</i><span>{str(f.fileName)||'未命名文件'}</span></div>}
-function MessageView({message,highlighted}:{message:Row&{blocks:Row[];attachments:Row[];files:Row[]};highlighted:boolean}){const[showTime,setShowTime]=useState(false),role=str(message.sender);return <div className={`message ${role} ${highlighted?'message-hit':''}`} data-message-uuid={str(message.uuid)}><button className="role" onClick={()=>setShowTime(v=>!v)}>{roleLabel(role)}</button><div className="message-content">{showTime&&str(message.createdAt)&&<time>{date(str(message.createdAt))}</time>}{message.blocks.map(b=><BlockView key={str(b.id)} block={b}/>)}{message.attachments.length>0&&<div className="attach-list">{message.attachments.map(a=><AttachmentCard key={str(a.id)} a={a}/>)}</div>}{message.files.length>0&&<div className="file-list">{message.files.map(f=><FileChip key={str(f.id)} f={f}/>)}</div>}</div></div>}
+function RawViewer({
+  value,
+  label = "Raw JSON",
+}: {
+  value: unknown;
+  label?: string;
+}) {
+  const full = useMemo(() => serializeRawJson(value), [value]),
+    [open, setOpen] = useState(false),
+    [needle, setNeedle] = useState(""),
+    [copied, setCopied] = useState(false);
+  const size = new Blob([full]).size,
+    hits = needle
+      ? full.toLowerCase().split(needle.toLowerCase()).length - 1
+      : 0,
+    rendered = !needle
+      ? full
+      : full
+          .split(
+            new RegExp(
+              `(${needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
+              "gi",
+            ),
+          )
+          .map((part, index) =>
+            part.toLowerCase() === needle.toLowerCase() ? (
+              <mark key={index}>{part}</mark>
+            ) : (
+              part
+            ),
+          );
+  const copy = async () => {
+    await navigator.clipboard?.writeText(full);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div className="raw-viewer">
+      {!open ? (
+        <button className="raw-load" onClick={() => setOpen(true)}>
+          {label}
+          {size > 20000 ? ` 较大 · ${bytes(size)}` : ""} · 点击完整加载
+        </button>
+      ) : (
+        <>
+          <div className="raw-tools">
+            <input
+              value={needle}
+              onChange={(e) => setNeedle(e.target.value)}
+              placeholder="在当前 JSON 中搜索"
+              aria-label="在当前 JSON 中搜索"
+            />
+            {needle && <span>{hits} 处</span>}
+            <button onClick={() => void copy()}>
+              {copied ? "已复制" : "Copy"}
+            </button>
+            <button onClick={() => setOpen(false)}>Collapse</button>
+          </div>
+          <pre className="raw-pre raw-full">{rendered}</pre>
+        </>
+      )}
+    </div>
+  );
+}
+function DeferredMarkdown({
+  text,
+  code = false,
+}: {
+  text: string;
+  code?: boolean;
+}) {
+  const [loaded, setLoaded] = useState(text.length <= 120000);
+  if (!loaded)
+    return (
+      <div className="large-content">
+        <p>
+          此内容较大（{bytes(new Blob([text]).size)}
+          ），为避免阅读页卡顿尚未渲染。
+        </p>
+        <button className="secondary" onClick={() => setLoaded(true)}>
+          展开完整内容
+        </button>
+      </div>
+    );
+  return code ? (
+    <pre className="code-block">
+      <code>{text}</code>
+    </pre>
+  ) : (
+    <div className="md">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+    </div>
+  );
+}
+function BlockView({ block }: { block: Row }) {
+  const type = str(block.type),
+    content = str(block.normalizedContent),
+    raw = block.raw;
+  if (type === "text" && content) return <DeferredMarkdown text={content} />;
+  if (type === "code" && content)
+    return <DeferredMarkdown text={content} code />;
+  if (type === "thinking")
+    return (
+      <details className="block-card thinking">
+        <summary>
+          <i className="glyph">◍</i>Thinking<span className="chev">▸</span>
+        </summary>
+        <div className="block-body">
+          {content ? (
+            <DeferredMarkdown text={content} code />
+          ) : (
+            <RawViewer value={raw} label="Thinking Raw JSON" />
+          )}
+        </div>
+      </details>
+    );
+  if (type === "tool_use") {
+    const d = raw as Row | undefined;
+    return (
+      <details className="block-card tool">
+        <summary>
+          <i className="glyph">⚙</i>Tool Call · {str(d?.name) || "未知工具"}
+          {str(d?.mcp_server_url) && (
+            <em className="mcp">MCP · {str(d?.mcp_server_url)}</em>
+          )}
+          <span className="chev">▸</span>
+        </summary>
+        <div className="block-body">
+          <p className="kv">Input</p>
+          <RawViewer value={d?.input ?? raw} label="Tool Input JSON" />
+        </div>
+      </details>
+    );
+  }
+  if (type === "tool_result")
+    return (
+      <details className="block-card tool">
+        <summary>
+          <i className="glyph">◎</i>Tool Result<span className="chev">▸</span>
+        </summary>
+        <div className="block-body">
+          {content ? (
+            <DeferredMarkdown text={content} code />
+          ) : (
+            <RawViewer value={raw} label="Tool Result JSON" />
+          )}
+        </div>
+      </details>
+    );
+  return (
+    <details className="block-card other">
+      <summary>
+        <i className="glyph">▣</i>
+        {blockLabel(type)}
+        <span className="chev">▸</span>
+      </summary>
+      <div className="block-body">
+        {content ? (
+          <DeferredMarkdown text={content} code />
+        ) : (
+          <RawViewer value={raw} label="Raw JSON" />
+        )}
+      </div>
+    </details>
+  );
+}
+function AttachmentCard({ a }: { a: Row }) {
+  const name = str(a.fileName) || "未命名文件",
+    size = Number(a.fileSize ?? 0);
+  return (
+    <div className="attach-card">
+      <i className="glyph">▤</i>
+      <div>
+        <b>{name}</b>
+        <span>
+          {[str(a.fileType) || "未知类型", size ? bytes(size) : ""]
+            .filter(Boolean)
+            .join(" · ")}
+        </span>
+        {str(a.extractedContent) && (
+          <details className="inline-details">
+            <summary>查看提取内容</summary>
+            <DeferredMarkdown text={str(a.extractedContent)} code />
+          </details>
+        )}
+        <p className="attach-note">原始文件未包含在 Claude 导出中</p>
+      </div>
+    </div>
+  );
+}
+function FileChip({ f }: { f: Row }) {
+  return (
+    <div className="file-chip">
+      <i className="glyph">▦</i>
+      <span>{str(f.fileName) || "未命名文件"}</span>
+    </div>
+  );
+}
+function MessageView({
+  message,
+  highlighted,
+}: {
+  message: Row & { blocks: Row[]; attachments: Row[]; files: Row[] };
+  highlighted: boolean;
+}) {
+  const [showTime, setShowTime] = useState(false),
+    role = str(message.sender);
+  return (
+    <div
+      className={`message ${role} ${highlighted ? "message-hit" : ""}`}
+      data-message-uuid={str(message.uuid)}
+    >
+      <button className="role" onClick={() => setShowTime((v) => !v)}>
+        {roleLabel(role)}
+      </button>
+      <div className="message-content">
+        {showTime && str(message.createdAt) && (
+          <time>{date(str(message.createdAt))}</time>
+        )}
+        {message.blocks.map((b) => (
+          <BlockView key={str(b.id)} block={b} />
+        ))}
+        {message.attachments.length > 0 && (
+          <div className="attach-list">
+            {message.attachments.map((a) => (
+              <AttachmentCard key={str(a.id)} a={a} />
+            ))}
+          </div>
+        )}
+        {message.files.length > 0 && (
+          <div className="file-list">
+            {message.files.map((f) => (
+              <FileChip key={str(f.id)} f={f} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
-const INITIAL=50,STEP=100,WINDOW_LIMIT=300; const windowFor=(length:number,index:number,preferred=WINDOW_LIMIT)=>{const width=Math.min(length,preferred),start=Math.max(0,Math.min(index-Math.floor(width/3),length-width));return{start,end:start+width}}
-function ProgressiveMessages({conversationId,messages,scroller,target,restore}:{conversationId:string;messages:ConversationDetail['messages'];scroller:React.RefObject<HTMLElement|null>;target?:Target;restore?:Anchor}){const[range,setRange]=useState({start:0,end:Math.min(INITIAL,messages.length)}),[highlight,setHighlight]=useState(''),top=useRef<HTMLDivElement|null>(null),bottom=useRef<HTMLDivElement|null>(null);const move=useCallback((direction:'before'|'after')=>setRange(current=>{if(direction==='after'){const end=Math.min(messages.length,current.end+STEP);return{start:Math.max(0,end-WINDOW_LIMIT),end}}const start=Math.max(0,current.start-STEP);return{start,end:Math.min(messages.length,start+WINDOW_LIMIT)}}),[messages.length]);useEffect(()=>{const index=restore?messages.findIndex(m=>str(m.uuid)===restore.uuid):-1;setRange(index>=0?windowFor(messages.length,index):{start:0,end:Math.min(INITIAL,messages.length)})},[conversationId,messages.length,restore?.uuid]);useEffect(()=>{if(!target)return;const index=messages.findIndex(m=>str(m.uuid)===target.uuid);if(index>=0)setRange(windowFor(messages.length,index))},[messages,target]);useEffect(()=>{const root=scroller.current;if(!root)return;const io=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting)move(entry.target===bottom.current?'after':'before')}),{root,rootMargin:'500px'});if(top.current)io.observe(top.current);if(bottom.current)io.observe(bottom.current);return()=>io.disconnect()},[move,range,scroller]);useEffect(()=>{const uuid=target?.uuid??restore?.uuid;if(!uuid)return;const timer=window.setTimeout(()=>{const node=scroller.current?.querySelector<HTMLElement>(`[data-message-uuid="${CSS.escape(uuid)}"]`);if(!node)return;node.scrollIntoView({block:'start',behavior:target?'smooth':'auto'});if(target){setHighlight(uuid);window.setTimeout(()=>setHighlight(''),1800)}},0);return()=>window.clearTimeout(timer)},[range,restore?.uuid,scroller,target]);const shown=messages.slice(range.start,range.end);return <>{range.start>0&&<div ref={top} className="window-gap"><button onClick={()=>move('before')}>加载前 {Math.min(STEP,range.start)} 条（前方还有 {range.start} 条）</button></div>}{shown.map(m=><MessageView key={str(m.uuid)} message={m} highlighted={highlight===str(m.uuid)}/>)}{range.end<messages.length&&<div ref={bottom} className="window-gap"><button onClick={()=>move('after')}>加载后 {Math.min(STEP,messages.length-range.end)} 条（后方还有 {messages.length-range.end} 条）</button></div>}</>}
+const INITIAL = 50,
+  STEP = 100,
+  WINDOW_LIMIT = 300;
+const windowFor = (length: number, index: number, preferred = WINDOW_LIMIT) => {
+  const width = Math.min(length, preferred),
+    start = Math.max(
+      0,
+      Math.min(index - Math.floor(width / 3), length - width),
+    );
+  return { start, end: start + width };
+};
+function ProgressiveMessages({
+  conversationId,
+  messages,
+  scroller,
+  target,
+  restore,
+}: {
+  conversationId: string;
+  messages: ConversationDetail["messages"];
+  scroller: React.RefObject<HTMLElement | null>;
+  target?: Target;
+  restore?: Anchor;
+}) {
+  const [range, setRange] = useState({
+      start: 0,
+      end: Math.min(INITIAL, messages.length),
+    }),
+    [highlight, setHighlight] = useState(""),
+    top = useRef<HTMLDivElement | null>(null),
+    bottom = useRef<HTMLDivElement | null>(null);
+  const move = useCallback(
+    (direction: "before" | "after") =>
+      setRange((current) => {
+        if (direction === "after") {
+          const end = Math.min(messages.length, current.end + STEP);
+          return { start: Math.max(0, end - WINDOW_LIMIT), end };
+        }
+        const start = Math.max(0, current.start - STEP);
+        return { start, end: Math.min(messages.length, start + WINDOW_LIMIT) };
+      }),
+    [messages.length],
+  );
+  useEffect(() => {
+    const index = restore
+      ? messages.findIndex((m) => str(m.uuid) === restore.uuid)
+      : -1;
+    setRange(
+      index >= 0
+        ? windowFor(messages.length, index)
+        : { start: 0, end: Math.min(INITIAL, messages.length) },
+    );
+  }, [conversationId, messages.length, restore?.uuid]);
+  useEffect(() => {
+    if (!target) return;
+    const index = messages.findIndex((m) => str(m.uuid) === target.uuid);
+    if (index >= 0) setRange(windowFor(messages.length, index));
+  }, [messages, target]);
+  useEffect(() => {
+    const root = scroller.current;
+    if (!root) return;
+    const io = new IntersectionObserver(
+      (entries) =>
+        entries.forEach((entry) => {
+          if (entry.isIntersecting)
+            move(entry.target === bottom.current ? "after" : "before");
+        }),
+      { root, rootMargin: "500px" },
+    );
+    if (top.current) io.observe(top.current);
+    if (bottom.current) io.observe(bottom.current);
+    return () => io.disconnect();
+  }, [move, range, scroller]);
+  useEffect(() => {
+    const uuid = target?.uuid ?? restore?.uuid;
+    if (!uuid) return;
+    const timer = window.setTimeout(() => {
+      const node = scroller.current?.querySelector<HTMLElement>(
+        `[data-message-uuid="${CSS.escape(uuid)}"]`,
+      );
+      if (!node) return;
+      node.scrollIntoView({
+        block: "start",
+        behavior: target ? "smooth" : "auto",
+      });
+      if (target) {
+        setHighlight(uuid);
+        window.setTimeout(() => setHighlight(""), 1800);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [range, restore?.uuid, scroller, target]);
+  const shown = messages.slice(range.start, range.end);
+  return (
+    <>
+      {range.start > 0 && (
+        <div ref={top} className="window-gap">
+          <button onClick={() => move("before")}>
+            加载前 {Math.min(STEP, range.start)} 条（前方还有 {range.start} 条）
+          </button>
+        </div>
+      )}
+      {shown.map((m) => (
+        <MessageView
+          key={str(m.uuid)}
+          message={m}
+          highlighted={highlight === str(m.uuid)}
+        />
+      ))}
+      {range.end < messages.length && (
+        <div ref={bottom} className="window-gap">
+          <button onClick={() => move("after")}>
+            加载后 {Math.min(STEP, messages.length - range.end)} 条（后方还有{" "}
+            {messages.length - range.end} 条）
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
 
-const filters:Array<[ArchiveFilter,string]>=[['all','全部'],['conversations','对话'],['design_chats','Design Chats'],['attachments','有附件'],['tools','有 Tool'],['thinking','有 Thinking']],sorts:Array<[ArchiveSort,string]>=[['updated_desc','最近更新'],['created_asc','最早创建'],['messages_desc','消息最多'],['title_asc','标题']]
-function ArchiveSidebar({items,results,selected,query,setQuery,filter,setFilter,sort,setSort,openItem,openResult}:{items:ArchiveIndexItem[];results:SearchResult[]|null;selected:Selection;query:string;setQuery:(v:string)=>void;filter:ArchiveFilter;setFilter:(v:ArchiveFilter)=>void;sort:ArchiveSort;setSort:(v:ArchiveSort)=>void;openItem:(i:ArchiveIndexItem)=>void;openResult:(r:SearchResult)=>void}){const searching=results!==null;return <aside><div className="index-head"><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="搜索对话、项目、记忆与回顾"/>{!searching&&<><div className="sort-row"><select value={sort} onChange={e=>setSort(e.target.value as ArchiveSort)} aria-label="排序方式">{sorts.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select><span className="count">{items.length} 个窗口</span></div><div className="filter-row">{filters.map(([v,l])=><button key={v} className={`chip ${filter===v?'on':''}`} onClick={()=>setFilter(v)}>{l}</button>)}</div></>}</div><div className="index-list">{searching?(results.length===0?<p className="index-empty">没有符合条件的对话、项目、记忆或回顾。</p>:results.map(r=><button className="conversation search-result" key={`${r.match}:${r.id}:${r.excerpt}`} onClick={()=>openResult(r)}><b>{r.match==='title'?'标题命中':r.source&&r.source!=='Conversation'?r.source:`${roleLabel(r.sender??'')} · 第 ${(r.messageIndex??0)+1} 条`}</b><span>{r.title}</span><em>{r.excerpt}</em></button>)):(items.length===0?<p className="index-empty">没有符合条件的会话。</p>:items.map(i=><button className={`conversation ${selected.id===i.id&&selected.kind===i.kind?'selected':''}`} key={`${i.kind}:${i.id}`} onClick={()=>openItem(i)}><b>{i.title}</b><span className="meta"><i className="kind-tag">{i.kind==='design_chat'?'DESIGN CHAT':'CONVERSATION'}</i>{date(i.updatedAt)} · {i.messageCount} 条消息</span>{i.kind==='design_chat'&&i.projectResolution==='unresolved'&&<em className="proj-tag">未关联到本次导出的 Project</em>}</button>))}</div></aside>}
+const filters: Array<[ArchiveFilter, string]> = [
+    ["all", "全部"],
+    ["conversations", "对话"],
+    ["design_chats", "Design Chats"],
+    ["attachments", "有附件"],
+    ["tools", "有 Tool"],
+    ["thinking", "有 Thinking"],
+  ],
+  sorts: Array<[ArchiveSort, string]> = [
+    ["updated_desc", "最近更新"],
+    ["created_asc", "最早创建"],
+    ["messages_desc", "消息最多"],
+    ["title_asc", "标题"],
+  ];
+function ArchiveSidebar({
+  items,
+  results,
+  selected,
+  query,
+  setQuery,
+  filter,
+  setFilter,
+  sort,
+  setSort,
+  openItem,
+  openResult,
+}: {
+  items: ArchiveIndexItem[];
+  results: SearchResult[] | null;
+  selected: Selection;
+  query: string;
+  setQuery: (v: string) => void;
+  filter: ArchiveFilter;
+  setFilter: (v: ArchiveFilter) => void;
+  sort: ArchiveSort;
+  setSort: (v: ArchiveSort) => void;
+  openItem: (i: ArchiveIndexItem) => void;
+  openResult: (r: SearchResult) => void;
+}) {
+  const searching = results !== null;
+  return (
+    <aside>
+      <div className="index-head">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="搜索对话、项目、记忆与回顾"
+        />
+        {!searching && (
+          <>
+            <div className="sort-row">
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as ArchiveSort)}
+                aria-label="排序方式"
+              >
+                {sorts.map(([v, l]) => (
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+              <span className="count">{items.length} 个窗口</span>
+            </div>
+            <div className="filter-row">
+              {filters.map(([v, l]) => (
+                <button
+                  key={v}
+                  className={`chip ${filter === v ? "on" : ""}`}
+                  onClick={() => setFilter(v)}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+      <div className="index-list">
+        {searching ? (
+          results.length === 0 ? (
+            <p className="index-empty">
+              没有符合条件的对话、项目、记忆或回顾。
+            </p>
+          ) : (
+            results.map((r) => (
+              <button
+                className="conversation search-result"
+                key={`${r.match}:${r.id}:${r.excerpt}`}
+                onClick={() => openResult(r)}
+              >
+                <b>
+                  {r.match === "title"
+                    ? "标题命中"
+                    : r.source && r.source !== "Conversation"
+                      ? r.source
+                      : `${roleLabel(r.sender ?? "")} · 第 ${(r.messageIndex ?? 0) + 1} 条`}
+                </b>
+                <span>{r.title}</span>
+                <em>{r.excerpt}</em>
+              </button>
+            ))
+          )
+        ) : items.length === 0 ? (
+          <p className="index-empty">没有符合条件的会话。</p>
+        ) : (
+          items.map((i) => (
+            <button
+              className={`conversation ${selected.id === i.id && selected.kind === i.kind ? "selected" : ""}`}
+              key={`${i.kind}:${i.id}`}
+              onClick={() => openItem(i)}
+            >
+              <b>{i.title}</b>
+              <span className="meta">
+                <i className="kind-tag">
+                  {i.kind === "design_chat" ? "DESIGN CHAT" : "CONVERSATION"}
+                </i>
+                {date(i.updatedAt)} · {i.messageCount} 条消息
+              </span>
+              {i.kind === "design_chat" &&
+                i.projectResolution === "unresolved" && (
+                  <em className="proj-tag">未关联到本次导出的 Project</em>
+                )}
+            </button>
+          ))
+        )}
+      </div>
+    </aside>
+  );
+}
 
-export default function App(){const[archive,setArchive]=useState<Archive|null>(null),[page,setPage]=useState('import'),[selected,setSelected]=useState<Selection>({kind:'conversation',id:''}),[query,setQuery]=useState(''),[filter,setFilter]=useState<ArchiveFilter>('all'),[sort,setSort]=useState<ArchiveSort>('updated_desc'),[items,setItems]=useState<ArchiveIndexItem[]>([]),[results,setResults]=useState<SearchResult[]|null>(null),[conversationDetail,setConversationDetail]=useState<ConversationDetail|undefined>(),[designDetail,setDesignDetail]=useState<DesignChatDetail|undefined>(),[note,setNote]=useState(''),[busy,setBusy]=useState(false),[target,setTarget]=useState<Target>(),[anchors,setAnchors]=useState<Record<string,Anchor>>({}),[projectJump,setProjectJump]=useState<{uuid:string;n:number}>({uuid:'',n:0});const input=useRef<HTMLInputElement>(null),article=useRef<HTMLElement>(null);useEffect(()=>{void archiveDb('get').then(v=>{if(v){setArchive(v);setSelected({kind:'conversation',id:v.conversations[0]?.id??''});setPage('archive')}})},[]);useEffect(()=>{let live=true;const timer=window.setTimeout(()=>{const load=query.trim()?searchArchive(query,{limit:300}).then(v=>{if(live)setResults(v)}):listArchive({filter,sort}).then(v=>{if(live){setItems(v);setResults(null)}});void load},160);return()=>{live=false;window.clearTimeout(timer)}},[archive,filter,query,sort]);useEffect(()=>{let live=true;setConversationDetail(undefined);setDesignDetail(undefined);if(!selected.id)return;if(selected.kind==='conversation')void getConversationDetail(selected.id).then(v=>{if(live)setConversationDetail(v)});else void getDesignChatDetail(selected.id).then(v=>{if(live)setDesignDetail(v)});return()=>{live=false}},[selected]);const conversations=useMemo(()=>archive?.conversations??[],[archive]),current=conversations.find(c=>c.id===selected.id)??conversations[0],all=conversations.flatMap(c=>c.messages);const select=useCallback((next:Selection,nextTarget?:string)=>{setSelected(next);setPage('archive');setTarget(nextTarget?{uuid:nextTarget,token:Date.now()}:undefined)},[]);const captureAnchor=useCallback(()=>{const root=article.current;if(!root||selected.kind!=='conversation')return;const rootTop=root.getBoundingClientRect().top,node=[...root.querySelectorAll<HTMLElement>('[data-message-uuid]')].find(n=>n.getBoundingClientRect().bottom>=rootTop);if(!node?.dataset.messageUuid)return;const anchor={uuid:node.dataset.messageUuid,offset:node.getBoundingClientRect().top-rootTop};setAnchors(p=>p[selected.id]?.uuid===anchor.uuid&&Math.abs(p[selected.id].offset-anchor.offset)<5?p:{...p,[selected.id]:anchor})},[selected]);async function importFile(files:File[]){setBusy(true);setNote('正在扫描文件…');try{const session=await importClaudeFiles(files,p=>setNote(`${p.phase} ${p.percent}%`)),v=await legacyArchiveSnapshot();setArchive(v);select({kind:'conversation',id:v.conversations[0]?.id??''});setNote(`导入完成：${v.conversations.length} 个会话；新增 ${session.counts.inserted}，更新 ${session.counts.updated}，未变化 ${session.counts.unchanged}，冲突 ${session.counts.conflicted}。`)}catch(e){setNote(`导入失败：${e instanceof Error?e.message:'未知错误'}`)}finally{setBusy(false)}}function exportOne(format:string){if(!current)return;const safe=current.title.replace(/[\\/:*?"<>|]/g,'_').slice(0,60),body=conversationText(current.title,current.messages.map(m=>({role:m.role,createdAt:m.createdAt,text:textOf(m)})),date);if(format==='json')download(`${safe}.json`,JSON.stringify(current,null,2),'application/json');else if(format==='html')download(`${safe}.html`,`<!doctype html><meta charset="utf-8"><title>${safe}</title><style>body{max-width:860px;margin:40px auto;font:16px/1.7 system-ui;white-space:pre-wrap}</style><h1>${safe.replace(/</g,'&lt;')}</h1>${body.replace(/&/g,'&amp;').replace(/</g,'&lt;')}`,'text/html');else download(`${safe}.${format}`,body,'text/plain;charset=utf-8')}const file=(e:ChangeEvent<HTMLInputElement>)=>{const files=[...(e.target.files??[])];if(files.length)void importFile(files)},drop=(e:DragEvent)=>{e.preventDefault();const files=[...e.dataTransfer.files];if(files.length)void importFile(files)};return <main><header><div className="brand">✦ 时光之遗 <small>TIME LEGACY</small></div><nav>{[['import','导入'],['archive','档案'],['memories','记忆'],['projects','项目'],['reflections','回顾'],['analytics','统计'],['data','数据'],['export','导出']].map(([p,n])=><button key={p} className={page===p?'active':''} onClick={()=>setPage(p)}>{n}</button>)}</nav><span className="privacy">● 本地处理，未上传</span></header>{note&&<div className="notice">{note}<button onClick={()=>setNote('')}>×</button></div>}{page==='import'&&<section className="landing"><p className="eyebrow">PRIVATE CONVERSATION ARCHIVE</p><h1>让过去的对话，<em>重新可阅读。</em></h1><p>导入 Claude 官方导出的 ZIP 或 conversations.json。所有处理都在当前浏览器完成。</p><div className="drop" onDragOver={e=>e.preventDefault()} onDrop={drop} onClick={()=>input.current?.click()}><strong>{busy?'正在处理档案…':'拖入 Claude 导出文件'}</strong><span>或点击选择完整导出 ZIP / 多个批次文件</span><i>✦ 支持 Manifest、批次 ZIP 与 conversations.json</i></div><input ref={input} hidden multiple type="file" accept=".json,.zip" onChange={file}/>{archive&&<button className="secondary" onClick={()=>setPage('archive')}>继续阅读已有档案 →</button>}</section>}{page==='archive'&&archive===null&&<section className="archive"><div className="empty">请先导入档案。</div></section>}{page==='archive'&&archive!==null&&<section className="archive"><ArchiveSidebar items={items} results={results} selected={selected} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} sort={sort} setSort={setSort} openItem={i=>select({kind:i.kind,id:i.id})} openResult={r=>{const route=r.route||'';if(route.startsWith('/projects/')){setProjectJump(p=>({uuid:route.slice('/projects/'.length).split('#')[0],n:p.n+1}));setPage('projects')}else if(route.startsWith('/memories/'))setPage('memories');else if(route.startsWith('/reflections/'))setPage('reflections');else select({kind:'conversation',id:r.conversationUuid??r.id},r.messageUuid)}}/><article ref={article} onScroll={captureAnchor}>{selected.kind==='conversation'&&!conversationDetail&&<div className="empty loading">正在从本地档案库读取…</div>}{conversationDetail&&<><div className="conversation-head"><div><p className="eyebrow">CONVERSATION</p><h2>{str(conversationDetail.conversation.name)||'未命名对话'}</h2><span>{date(str(conversationDetail.conversation.createdAt))} — {date(str(conversationDetail.conversation.updatedAt))} · {conversationDetail.messages.length} 条消息</span></div><button className="secondary" onClick={()=>setPage('export')}>导出此窗口</button></div><div className="messages">{conversationDetail.messages.length===0?<div className="empty">此对话在导出记录中没有消息内容。</div>:<ProgressiveMessages conversationId={selected.id} messages={conversationDetail.messages} scroller={article} target={target} restore={anchors[selected.id]}/>}</div></>}{selected.kind==='design_chat'&&!designDetail&&<div className="empty loading">正在读取 Design Chat…</div>}{designDetail&&<><div className="conversation-head"><div><p className="eyebrow">DESIGN CHAT</p><h2>{str(designDetail.designChat.title)||'未命名 Design Chat'}</h2><span>{date(str(designDetail.designChat.createdAt))} — {date(str(designDetail.designChat.updatedAt))}</span></div></div><div className="messages"><section className="design-meta"><p>Project：{str(designDetail.designChat.projectName)||'未提供'}</p><p>UUID：{str(designDetail.designChat.projectUuid)||'未提供'}</p><p>{str(designDetail.designChat.projectResolution)==='unresolved'?'未关联到本次导出的 Project':designDetail.project?'已关联本地 Project':'未提供 Project 关联'}</p><p>当前导出记录中没有 message 内容。</p><RawViewer value={designDetail.designChat.raw} label="Design Chat Raw JSON"/></section></div></>}</article></section>}{page==='memories'&&<MemoriesPage openProject={uuid=>{setProjectJump(p=>({uuid,n:p.n+1}));setPage('projects')}}/>}{page==='projects'&&<ProjectsPage jump={projectJump}/>}{page==='reflections'&&<ReflectionsPage/>}{page==='data'&&<DataPage/>}{page==='analytics'&&<AnalyticsPage base={[['会话',conversations.length],['消息',all.length],['你的消息',all.filter(m=>m.role==='user'||m.role==='human').length],['Claude 消息',all.filter(m=>m.role==='assistant').length],['正文字符',all.reduce((n,m)=>n+textOf(m).length,0).toLocaleString()],['活跃天数',new Set(all.map(m=>m.createdAt?.slice(0,10)).filter(Boolean)).size]]}/>}{page==='export'&&<ExportPage current={current?{title:current.title}:undefined} onExportOne={exportOne} onExportSet={(picked,sensitiveOk)=>{void exportArchiveSet(picked,sensitiveOk).then(done=>setNote(done.length?`已导出：${done.join('、')}`:'未导出任何内容（可能未选择分类）。'))}} onClear={async()=>{if(confirm('这会从当前浏览器彻底清空聊天正文，确定吗？')){await archiveDb('clear');setArchive(null);setSelected({kind:'conversation',id:''});setPage('import');setNote('本地档案已彻底清空。')}}}/>}</main>}
+export default function App() {
+  const [archive, setArchive] = useState<Archive | null>(null),
+    [page, setPage] = useState("import"),
+    [selected, setSelected] = useState<Selection>({
+      kind: "conversation",
+      id: "",
+    }),
+    [query, setQuery] = useState(""),
+    [filter, setFilter] = useState<ArchiveFilter>("all"),
+    [sort, setSort] = useState<ArchiveSort>("updated_desc"),
+    [items, setItems] = useState<ArchiveIndexItem[]>([]),
+    [results, setResults] = useState<SearchResult[] | null>(null),
+    [conversationDetail, setConversationDetail] = useState<
+      ConversationDetail | undefined
+    >(),
+    [designDetail, setDesignDetail] = useState<DesignChatDetail | undefined>(),
+    [note, setNote] = useState(""),
+    [busy, setBusy] = useState(false),
+    [target, setTarget] = useState<Target>(),
+    [anchors, setAnchors] = useState<Record<string, Anchor>>({}),
+    [projectJump, setProjectJump] = useState<{ uuid: string; docUuid?: string; n: number }>({
+      uuid: "",
+      n: 0,
+    }),
+    [memoryJump, setMemoryJump] = useState<{ path: string; n: number }>({ path: "", n: 0 }),
+    [reflectionJump, setReflectionJump] = useState<{ id: string; n: number }>({ id: "", n: 0 });
+  const input = useRef<HTMLInputElement>(null),
+    article = useRef<HTMLElement>(null);
+  useEffect(() => {
+    void archiveDb("get").then((v) => {
+      if (v) {
+        setArchive(v);
+        setSelected({ kind: "conversation", id: v.conversations[0]?.id ?? "" });
+        setPage("archive");
+      }
+    });
+  }, []);
+  useEffect(() => {
+    let live = true;
+    const timer = window.setTimeout(() => {
+      const load = query.trim()
+        ? searchArchive(query, { limit: 300 }).then((v) => {
+            if (live) setResults(v);
+          })
+        : listArchive({ filter, sort }).then((v) => {
+            if (live) {
+              setItems(v);
+              setResults(null);
+            }
+          });
+      void load;
+    }, 160);
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+    };
+  }, [archive, filter, query, sort]);
+  useEffect(() => {
+    let live = true;
+    setConversationDetail(undefined);
+    setDesignDetail(undefined);
+    if (!selected.id) return;
+    if (selected.kind === "conversation")
+      void getConversationDetail(selected.id).then((v) => {
+        if (live) setConversationDetail(v);
+      });
+    else
+      void getDesignChatDetail(selected.id).then((v) => {
+        if (live) setDesignDetail(v);
+      });
+    return () => {
+      live = false;
+    };
+  }, [selected]);
+  const conversations = useMemo(() => archive?.conversations ?? [], [archive]),
+    current =
+      conversations.find((c) => c.id === selected.id) ?? conversations[0],
+    all = conversations.flatMap((c) => c.messages);
+  const select = useCallback((next: Selection, nextTarget?: string) => {
+    setSelected(next);
+    setPage("archive");
+    setTarget(nextTarget ? { uuid: nextTarget, token: Date.now() } : undefined);
+  }, []);
+  const captureAnchor = useCallback(() => {
+    const root = article.current;
+    if (!root || selected.kind !== "conversation") return;
+    const rootTop = root.getBoundingClientRect().top,
+      node = [
+        ...root.querySelectorAll<HTMLElement>("[data-message-uuid]"),
+      ].find((n) => n.getBoundingClientRect().bottom >= rootTop);
+    if (!node?.dataset.messageUuid) return;
+    const anchor = {
+      uuid: node.dataset.messageUuid,
+      offset: node.getBoundingClientRect().top - rootTop,
+    };
+    setAnchors((p) =>
+      p[selected.id]?.uuid === anchor.uuid &&
+      Math.abs(p[selected.id].offset - anchor.offset) < 5
+        ? p
+        : { ...p, [selected.id]: anchor },
+    );
+  }, [selected]);
+  async function importFile(files: File[]) {
+    setBusy(true);
+    setNote("正在扫描文件…");
+    try {
+      const session = await importClaudeFiles(files, (p) =>
+          setNote(`${p.phase} ${p.percent}%`),
+        ),
+        v = await legacyArchiveSnapshot();
+      setArchive(v);
+      select({ kind: "conversation", id: v.conversations[0]?.id ?? "" });
+      setNote(
+        `导入完成：${v.conversations.length} 个会话；新增 ${session.counts.inserted}，更新 ${session.counts.updated}，未变化 ${session.counts.unchanged}，冲突 ${session.counts.conflicted}。`,
+      );
+    } catch (e) {
+      setNote(`导入失败：${e instanceof Error ? e.message : "未知错误"}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+  function exportOne(format: string) {
+    if (!current) return;
+    const safe = current.title.replace(/[\\/:*?"<>|]/g, "_").slice(0, 60),
+      body = conversationText(
+        current.title,
+        current.messages.map((m) => ({
+          role: m.role,
+          createdAt: m.createdAt,
+          text: textOf(m),
+        })),
+        date,
+      );
+    if (format === "json")
+      download(
+        `${safe}.json`,
+        JSON.stringify(current, null, 2),
+        "application/json",
+      );
+    else if (format === "html")
+      download(
+        `${safe}.html`,
+        `<!doctype html><meta charset="utf-8"><title>${safe}</title><style>body{max-width:860px;margin:40px auto;font:16px/1.7 system-ui;white-space:pre-wrap}</style><h1>${safe.replace(/</g, "&lt;")}</h1>${body.replace(/&/g, "&amp;").replace(/</g, "&lt;")}`,
+        "text/html",
+      );
+    else download(`${safe}.${format}`, body, "text/plain;charset=utf-8");
+  }
+  const file = (e: ChangeEvent<HTMLInputElement>) => {
+      const files = [...(e.target.files ?? [])];
+      if (files.length) void importFile(files);
+    },
+    drop = (e: DragEvent) => {
+      e.preventDefault();
+      const files = [...e.dataTransfer.files];
+      if (files.length) void importFile(files);
+    };
+  return (
+    <main>
+      <header>
+        <div className="brand">
+          ✦ 时光之遗 <small>TIME LEGACY</small>
+        </div>
+        <nav>
+          {[
+            ["import", "导入"],
+            ["archive", "档案"],
+            ["memories", "记忆"],
+            ["projects", "项目"],
+            ["reflections", "回顾"],
+            ["analytics", "统计"],
+            ["data", "数据"],
+            ["export", "导出"],
+          ].map(([p, n]) => (
+            <button
+              key={p}
+              className={page === p ? "active" : ""}
+              onClick={() => setPage(p)}
+            >
+              {n}
+            </button>
+          ))}
+        </nav>
+        <span className="privacy">● 本地处理，未上传</span>
+      </header>
+      {note && (
+        <div className="notice">
+          {note}
+          <button onClick={() => setNote("")}>×</button>
+        </div>
+      )}
+      {page === "import" && (
+        <section className="landing">
+          <p className="eyebrow">PRIVATE CONVERSATION ARCHIVE</p>
+          <h1>
+            让过去的对话，<em>重新可阅读。</em>
+          </h1>
+          <p>
+            导入 Claude 官方导出的 ZIP 或
+            conversations.json。所有处理都在当前浏览器完成。
+          </p>
+          <div
+            className="drop"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={drop}
+            onClick={() => input.current?.click()}
+          >
+            <strong>{busy ? "正在处理档案…" : "拖入 Claude 导出文件"}</strong>
+            <span>或点击选择完整导出 ZIP / 多个批次文件</span>
+            <i>✦ 支持 Manifest、批次 ZIP 与 conversations.json</i>
+          </div>
+          <input
+            ref={input}
+            hidden
+            multiple
+            type="file"
+            accept=".json,.zip"
+            onChange={file}
+          />
+          {archive && (
+            <button className="secondary" onClick={() => setPage("archive")}>
+              继续阅读已有档案 →
+            </button>
+          )}
+        </section>
+      )}
+      {page === "archive" && archive === null && (
+        <section className="archive">
+          <div className="empty">请先导入档案。</div>
+        </section>
+      )}
+      {page === "archive" && archive !== null && (
+        <section className="archive">
+          <ArchiveSidebar
+            items={items}
+            results={results}
+            selected={selected}
+            query={query}
+            setQuery={setQuery}
+            filter={filter}
+            setFilter={setFilter}
+            sort={sort}
+            setSort={setSort}
+            openItem={(i) => select({ kind: i.kind, id: i.id })}
+            openResult={(r) => {
+              if (r.kind === "project" || r.kind === "project_doc" || r.kind === "project_memory") {
+                setProjectJump((p) => ({ uuid: r.projectUuid ?? r.entityId, docUuid: r.docUuid, n: p.n + 1 }));
+                setPage("projects");
+              } else if (r.kind === "memory_file") { setMemoryJump((p) => ({ path: r.memoryPath ?? "", n: p.n + 1 })); setPage("memories"); }
+              else if (r.kind === "reflection") { setReflectionJump((p) => ({ id: r.reflectionId ?? r.entityId, n: p.n + 1 })); setPage("reflections"); }
+              else
+                select(
+                  { kind: "conversation", id: r.conversationUuid ?? r.entityId },
+                  r.messageUuid,
+                );
+            }}
+          />
+          <article ref={article} onScroll={captureAnchor}>
+            {selected.kind === "conversation" && !conversationDetail && (
+              <div className="empty loading">正在从本地档案库读取…</div>
+            )}
+            {conversationDetail && (
+              <>
+                <div className="conversation-head">
+                  <div>
+                    <p className="eyebrow">CONVERSATION</p>
+                    <h2>
+                      {str(conversationDetail.conversation.name) ||
+                        "未命名对话"}
+                    </h2>
+                    <span>
+                      {date(str(conversationDetail.conversation.createdAt))} —{" "}
+                      {date(str(conversationDetail.conversation.updatedAt))} ·{" "}
+                      {conversationDetail.messages.length} 条消息
+                    </span>
+                  </div>
+                  <button
+                    className="secondary"
+                    onClick={() => setPage("export")}
+                  >
+                    导出此窗口
+                  </button>
+                </div>
+                <div className="messages">
+                  {conversationDetail.messages.length === 0 ? (
+                    <div className="empty">
+                      此对话在导出记录中没有消息内容。
+                    </div>
+                  ) : (
+                    <ProgressiveMessages
+                      conversationId={selected.id}
+                      messages={conversationDetail.messages}
+                      scroller={article}
+                      target={target}
+                      restore={anchors[selected.id]}
+                    />
+                  )}
+                </div>
+              </>
+            )}
+            {selected.kind === "design_chat" && !designDetail && (
+              <div className="empty loading">正在读取 Design Chat…</div>
+            )}
+            {designDetail && (
+              <>
+                <div className="conversation-head">
+                  <div>
+                    <p className="eyebrow">DESIGN CHAT</p>
+                    <h2>
+                      {str(designDetail.designChat.title) ||
+                        "未命名 Design Chat"}
+                    </h2>
+                    <span>
+                      {date(str(designDetail.designChat.createdAt))} —{" "}
+                      {date(str(designDetail.designChat.updatedAt))}
+                    </span>
+                  </div>
+                </div>
+                <div className="messages">
+                  <section className="design-meta">
+                    <p>
+                      Project：
+                      {str(designDetail.designChat.projectName) || "未提供"}
+                    </p>
+                    <p>
+                      UUID：
+                      {str(designDetail.designChat.projectUuid) || "未提供"}
+                    </p>
+                    <p>
+                      {str(designDetail.designChat.projectResolution) ===
+                      "unresolved"
+                        ? "未关联到本次导出的 Project"
+                        : designDetail.project
+                          ? "已关联本地 Project"
+                          : "未提供 Project 关联"}
+                    </p>
+                    <p>当前导出记录中没有 message 内容。</p>
+                    <RawViewer
+                      value={designDetail.designChat.raw}
+                      label="Design Chat Raw JSON"
+                    />
+                  </section>
+                </div>
+              </>
+            )}
+          </article>
+        </section>
+      )}
+      {page === "memories" && (
+        <MemoriesPage
+          jump={memoryJump}
+          openProject={(uuid) => {
+            setProjectJump((p) => ({ uuid, n: p.n + 1 }));
+            setPage("projects");
+          }}
+        />
+      )}
+      {page === "projects" && <ProjectsPage jump={projectJump} />}
+      {page === "reflections" && <ReflectionsPage jump={reflectionJump} />}
+      {page === "data" && <DataPage />}
+      {page === "analytics" && (
+        <AnalyticsPage
+          base={[
+            ["会话", conversations.length],
+            ["消息", all.length],
+            [
+              "你的消息",
+              all.filter((m) => m.role === "user" || m.role === "human").length,
+            ],
+            ["Claude 消息", all.filter((m) => m.role === "assistant").length],
+            [
+              "正文字符",
+              all.reduce((n, m) => n + textOf(m).length, 0).toLocaleString(),
+            ],
+            [
+              "活跃天数",
+              new Set(all.map((m) => m.createdAt?.slice(0, 10)).filter(Boolean))
+                .size,
+            ],
+          ]}
+        />
+      )}
+      {page === "export" && (
+        <ExportPage
+          current={current ? { title: current.title } : undefined}
+          onExportOne={exportOne}
+          onExportSet={(picked, sensitiveOk) => {
+            void exportArchiveSet(picked, sensitiveOk).then((done) =>
+              setNote(
+                done.length
+                  ? `已导出：${done.join("、")}`
+                  : "未导出任何内容（可能未选择分类）。",
+              ),
+            );
+          }}
+          onClear={async () => {
+            if (confirm("这会从当前浏览器彻底清空聊天正文，确定吗？")) {
+              await archiveDb("clear");
+              setArchive(null);
+              setSelected({ kind: "conversation", id: "" });
+              setPage("import");
+              setNote("本地档案已彻底清空。");
+            }
+          }}
+        />
+      )}
+    </main>
+  );
+}

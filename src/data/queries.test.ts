@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { clearAllData, DB_NAME, persistImport } from './db'
 import { emptyImport } from './types'
-import { getConversationDetail, getDataPage, getDesignChatDetail, getMemories, getProject, listArchive, listProjects, searchArchive } from './queries'
+import { getConversationDetail, getDataPage, getDesignChatDetail, getMemories, getProject, listArchive, listProjects, listRawRecords, searchArchive } from './queries'
 
 const erase = () => new Promise<void>((resolve, reject) => { const request = indexedDB.deleteDatabase(DB_NAME); request.onsuccess = () => resolve(); request.onerror = () => reject(request.error) })
 const session = () => ({ id: crypto.randomUUID(), startedAt: new Date().toISOString(), categories: ['conversations' as const], parts: [{ category: 'conversations' as const, part: 0 }], filesTotal: 1, filesSuccess: 0, filesFailed: 0, filesUnknown: 0, counts: { inserted: 0, updated: 0, unchanged: 0, conflicted: 0 }, records: {}, errors: [], conflicts: [] })
@@ -25,6 +25,7 @@ describe('Phase 3A query contracts', () => {
     expect(await searchArchive('private thought', { includeThinking: true })).toHaveLength(1)
     expect((await getDataPage()).sensitiveCounts.users).toBe(1)
     expect(await getDesignChatDetail('dc')).toMatchObject({ designChat: { title: 'Design', projectResolution: 'unresolved' }, project: undefined })
+    expect(await listRawRecords()).toContainEqual(expect.objectContaining({ store: 'conversations', relativePath: 'conversations.json', category: 'conversations', part: 0, sessionId: 's', schemaSummary: 'object:uuid', raw: { uuid: 'c' } }))
     await clearAllData()
   })
 })
