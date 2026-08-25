@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, DragEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -14,6 +14,7 @@ import {
   ReflectionsPage,
 } from "./pages";
 import { exportArchiveSet } from "./export-set";
+import { sameMessageWindow, scrollAnchorDelta, shiftMessageWindow } from "./progressive-window";
 import { importClaudeFiles } from "./data/import-client";
 import { clearAllData, legacyArchiveSnapshot } from "./data/db";
 import {
@@ -366,20 +367,68 @@ function ProgressiveMessages({
     }),
     [highlight, setHighlight] = useState(""),
     top = useRef<HTMLDivElement | null>(null),
-    bottom = useRef<HTMLDivElement | null>(null);
-  const move = useCallback(
-    (direction: "before" | "after") =>
-      setRange((current) => {
-        if (direction === "after") {
-          const end = Math.min(messages.length, current.end + STEP);
-          return { start: Math.max(0, end - WINDOW_LIMIT), end };
-        }
-        const start = Math.max(0, current.start - STEP);
-        return { start, end: Math.min(messages.length, start + WINDOW_LIMIT) };
-      }),
-    [messages.length],
-  );
+    bottom = useRef<HTMLDivElement | null>(null),
+    rangeRef = useRef(range),
+    pendingAnchor = useRef<Anchor | undefined>(undefined),
+    isAdjusting = useRef(false),
+    restoredConversation = useRef(""),
+    handledTarget = useRef(0);
   useEffect(() => {
+    rangeRef.current = range;
+  }, [range]);
+  const visibleAnchor = useCallback((): Anchor | undefined => {
+    const root = scroller.current;
+    if (!root) return undefined;
+    const rootTop = root.getBoundingClientRect().top;
+    const node = [...root.querySelectorAll<HTMLElement>("[data-message-uuid]")]
+      .find((item) => item.getBoundingClientRect().bottom >= rootTop);
+    if (!node?.dataset.messageUuid) return undefined;
+    return {
+      uuid: node.dataset.messageUuid,
+      offset: node.getBoundingClientRect().top - rootTop,
+    };
+  }, [scroller]);
+  const move = useCallback(
+    (direction: "before" | "after") => {
+      if (isAdjusting.current) return;
+      const current = rangeRef.current;
+      const next = shiftMessageWindow(
+        current,
+        messages.length,
+        direction,
+        STEP,
+        WINDOW_LIMIT,
+      );
+      if (sameMessageWindow(current, next)) return;
+      pendingAnchor.current = visibleAnchor();
+      isAdjusting.current = true;
+      rangeRef.current = next;
+      setRange(next);
+    },
+    [messages.length, visibleAnchor],
+  );
+  useLayoutEffect(() => {
+    const anchor = pendingAnchor.current,
+      root = scroller.current;
+    pendingAnchor.current = undefined;
+    if (anchor && root) {
+      const node = root.querySelector<HTMLElement>(
+        `[data-message-uuid="${CSS.escape(anchor.uuid)}"]`,
+      );
+      if (node) {
+        const after = node.getBoundingClientRect().top - root.getBoundingClientRect().top;
+        root.scrollTop += scrollAnchorDelta(anchor.offset, after);
+      }
+    }
+    requestAnimationFrame(() => {
+      isAdjusting.current = false;
+    });
+  }, [range, scroller]);
+  useLayoutEffect(() => {
+    pendingAnchor.current = undefined;
+    isAdjusting.current = false;
+    restoredConversation.current = "";
+    handledTarget.current = 0;
     const index = restore
       ? messages.findIndex((m) => str(m.uuid) === restore.uuid)
       : -1;
@@ -409,9 +458,11 @@ function ProgressiveMessages({
     if (bottom.current) io.observe(bottom.current);
     return () => io.disconnect();
   }, [move, range, scroller]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const uuid = target?.uuid ?? restore?.uuid;
-    if (!uuid) return;
+    const targetIsNew = target && handledTarget.current !== target.token;
+    const restoreIsNew = !target && restore && restoredConversation.current !== conversationId;
+    if (!uuid || (!targetIsNew && !restoreIsNew)) return;
     const timer = window.setTimeout(() => {
       const node = scroller.current?.querySelector<HTMLElement>(
         `[data-message-uuid="${CSS.escape(uuid)}"]`,
@@ -422,12 +473,15 @@ function ProgressiveMessages({
         behavior: target ? "smooth" : "auto",
       });
       if (target) {
+        handledTarget.current = target.token;
         setHighlight(uuid);
         window.setTimeout(() => setHighlight(""), 1800);
+      } else {
+        restoredConversation.current = conversationId;
       }
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [range, restore?.uuid, scroller, target]);
+  }, [conversationId, range, restore?.uuid, scroller, target]);
   const shown = messages.slice(range.start, range.end);
   return (
     <>

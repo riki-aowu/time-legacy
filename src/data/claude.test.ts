@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import 'fake-indexeddb/auto'
@@ -39,8 +39,10 @@ describe('Claude export resolver and normalizer', () => {
   })
 })
 
-describe('real Claude export discovery regression', () => {
-  const root = 'E:/1-codex/claude记忆'
+const realExportRoot = process.env.CLAUDE_EXPORT_FIXTURE ?? 'E:/1-codex/claude记忆'
+// The real private export is intentionally absent from clones and CI.
+describe.skipIf(!existsSync(realExportRoot))('real Claude export discovery regression', () => {
+  const root = realExportRoot
   it('normalizes the complete real export without dropping observed categories', () => {
     const files = readdirSync(root).filter(name => /\.(zip|json)$/i.test(name)).map(name => ({ name, bytes: new Uint8Array(readFileSync(join(root, name))) }))
     const data = normalizeFiles(readFiles(files))

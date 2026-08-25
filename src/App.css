@@ -278,6 +278,8 @@ nav .active {
 .archive article {
   overflow: auto;
   background: var(--paper-0);
+  /* ProgressiveMessages owns its own UUID anchor compensation. */
+  overflow-anchor: none;
 }
 
 .conversation-head {
