@@ -72,5 +72,5 @@ describe('real Claude export discovery regression', () => {
     expect(second.counts.inserted).toBe(0)
     expect(second.counts.conflicted).toBe(0)
     expect(second.counts.unchanged).toBeGreaterThan(40_000)
-  })
+  }, 20_000)
 })

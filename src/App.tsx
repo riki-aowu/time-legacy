@@ -3,6 +3,7 @@ import type { ChangeEvent, DragEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { conversationText } from "./export";
+import { blockPresentation } from "./block-presentation";
 import { serializeRawJson } from "./raw";
 import {
   AnalyticsPage,
@@ -192,8 +193,8 @@ function BlockView({ block }: { block: Row }) {
   const type = str(block.type),
     content = str(block.normalizedContent),
     raw = block.raw;
-  if (type === "text" && content) return <DeferredMarkdown text={content} />;
-  if (type === "code" && content)
+  if (blockPresentation(type) === "direct" && type === "text" && content) return <DeferredMarkdown text={content} />;
+  if (blockPresentation(type) === "direct" && type === "code" && content)
     return <DeferredMarkdown text={content} code />;
   if (type === "thinking")
     return (

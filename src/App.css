@@ -629,7 +629,8 @@ nav .active {
 .block-card .chev { margin-left: auto; transition: transform var(--dur) var(--ease); color: var(--ink-3); }
 .block-card[open] > summary .chev { transform: rotate(90deg); }
 .block-card .glyph { font-style: normal; font-size: 13px; line-height: 1; opacity: .8; }
-.block-card.thinking { border-left: 3px solid #8a7bb0; background: linear-gradient(180deg, rgba(138, 123, 176, .06), var(--paper-1)); }
+.block-card.thinking { border-left: 2px solid rgba(138, 123, 176, .72); background: rgba(138, 123, 176, .025); margin: 8px 0; }
+.block-card.thinking summary { padding: 7px 11px; font-size: 11px; color: color-mix(in srgb, var(--ink-2) 80%, #8a7bb0); }
 .block-card.thinking .glyph { color: #8a7bb0; }
 .block-card.tool { border-left: 3px solid #a08a4e; background: linear-gradient(180deg, rgba(160, 138, 78, .05), var(--paper-1)); }
 .block-card.tool .glyph { color: #a08a4e; }
